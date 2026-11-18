@@ -1,0 +1,85 @@
+
+# 1. Database initialization
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-init
+  namespace: cake-delight
+data:
+  init.sql: |
+    CREATE DATABASE IF NOT EXISTS cake_catalog_db;
+    CREATE DATABASE IF NOT EXISTS cake_order_db;
+    CREATE DATABASE IF NOT EXISTS cake_notification_db;
+    CREATE DATABASE IF NOT EXISTS cake_rating_db;
+
+---
+# 2. Persistent storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: cake-delight
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+# 3. MySQL Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: cake-delight
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3306
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cake-delight-secrets
+                  key: MYSQL_PASSWORD
+          volumeMounts:
+            - name: mysql-data
+              mountPath: /var/lib/mysql
+            - name: mysql-init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+      volumes:
+        - name: mysql-data
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+        - name: mysql-init
+          configMap:
+            name: mysql-init
+
+---
+# 4. MySQL Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: cake-delight
+spec:
+  selector:
+    app: mysql
+  ports:
+    - port: 3306
+      targetPort: 3306
+  type: ClusterIP

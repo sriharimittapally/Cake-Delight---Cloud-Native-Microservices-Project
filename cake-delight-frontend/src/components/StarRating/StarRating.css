@@ -1,0 +1,21 @@
+.star-rating {
+  display: inline-flex;
+  gap: 0.1rem;
+}
+
+.star-rating__star {
+  color: var(--border);
+  font-size: 1.1rem;
+}
+
+.star-rating__star.is-filled {
+  color: var(--caramel);
+}
+
+.star-rating__star--button {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 1.8rem;
+  cursor: pointer;
+}

@@ -1,0 +1,13 @@
+.cake-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0 1rem;
+  align-items: end;
+  margin-bottom: 1.5rem;
+}
+
+.cake-filters__actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.9rem;
+}

@@ -1,0 +1,176 @@
+
+services:
+
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: cake-delight-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init:/docker-entrypoint-initdb.d
+    networks:
+      - cake-delight-network
+
+
+  # RabbitMQ Message Broker
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: cake-delight-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - cake-delight-network
+
+
+  # Cake Catalog Service
+  catalog-service:
+    build:
+      context: ../catalog-service
+      dockerfile: Dockerfile
+    image: cake-delight-catalog-service
+    container_name: catalog-service
+    environment:
+      MYSQL_HOST: ${MYSQL_HOST}
+      MYSQL_PORT: ${MYSQL_PORT}
+      MYSQL_USERNAME: ${MYSQL_USERNAME}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      CAKE_CATALOG_DB: ${CAKE_CATALOG_DB}
+    ports:
+      - "8081:8081"
+    depends_on:
+      - mysql
+    networks:
+      - cake-delight-network
+
+
+  # Order Service
+  order-service:
+    build:
+      context: ../order-service
+      dockerfile: Dockerfile
+    image: cake-delight-order-service
+    container_name: order-service
+    environment:
+      MYSQL_HOST: ${MYSQL_HOST}
+      MYSQL_PORT: ${MYSQL_PORT}
+      MYSQL_USERNAME: ${MYSQL_USERNAME}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      CAKE_ORDER_DB: ${CAKE_ORDER_DB}
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_PORT: ${RABBITMQ_PORT}
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      CATALOG_SERVICE_URL: ${CATALOG_SERVICE_URL}
+    ports:
+      - "8082:8082"
+    depends_on:
+      - mysql
+      - rabbitmq
+      - catalog-service
+    networks:
+      - cake-delight-network
+
+
+  # Notification Service
+  notification-service:
+    build:
+      context: ../notification-service
+      dockerfile: Dockerfile
+    image: cake-delight-notification-service
+    container_name: notification-service
+    environment:
+      MYSQL_HOST: ${MYSQL_HOST}
+      MYSQL_PORT: ${MYSQL_PORT}
+      MYSQL_USERNAME: ${MYSQL_USERNAME}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      CAKE_NOTIFICATION_DB: ${CAKE_NOTIFICATION_DB}
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_PORT: ${RABBITMQ_PORT}
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      MAIL_USERNAME: ${MAIL_USERNAME}
+      MAIL_PASSWORD: ${MAIL_PASSWORD}
+    ports:
+      - "8083:8083"
+    depends_on:
+      - mysql
+      - rabbitmq
+    networks:
+      - cake-delight-network
+
+
+  # Rating Service
+  rating-service:
+    build:
+      context: ../rating-service
+      dockerfile: Dockerfile
+    image: cake-delight-rating-service
+    container_name: rating-service
+    environment:
+      MYSQL_HOST: ${MYSQL_HOST}
+      MYSQL_PORT: ${MYSQL_PORT}
+      MYSQL_USERNAME: ${MYSQL_USERNAME}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      CAKE_RATING_DB: ${CAKE_RATING_DB}
+      ORDER_SERVICE_URL: ${ORDER_SERVICE_URL}
+    ports:
+      - "8084:8084"
+    depends_on:
+      - mysql
+      - order-service
+    networks:
+      - cake-delight-network
+
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: ../api-gateway
+      dockerfile: Dockerfile
+    image: cake-delight-api-gateway
+    container_name: api-gateway
+    environment:
+      CATALOG_SERVICE_URL: ${CATALOG_SERVICE_URL}
+      ORDER_SERVICE_URL: ${ORDER_SERVICE_URL}
+      RATING_SERVICE_URL: ${RATING_SERVICE_URL}
+    ports:
+      - "8080:8080"
+    depends_on:
+      - catalog-service
+      - order-service
+      - rating-service
+    networks:
+      - cake-delight-network
+
+    # Frontend
+  frontend:
+    build:
+      context: ../cake-delight-frontend
+      dockerfile: Dockerfile
+    image: cake-delight-frontend
+    container_name: cake-delight-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - api-gateway
+    networks:
+      - cake-delight-network
+
+
+# Persistent Storage
+volumes:
+  mysql_data:
+
+
+# Custom Network
+networks:
+  cake-delight-network:
+    driver: bridge

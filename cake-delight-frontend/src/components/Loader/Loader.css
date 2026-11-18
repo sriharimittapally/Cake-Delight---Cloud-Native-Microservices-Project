@@ -1,0 +1,12 @@
+.loader {
+  text-align: center;
+  color: var(--muted);
+  padding: 2rem 0;
+  animation: loader-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes loader-pulse {
+  50% {
+    opacity: 0.4;
+  }
+}

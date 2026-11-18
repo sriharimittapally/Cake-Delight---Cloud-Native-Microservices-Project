@@ -1,0 +1,40 @@
+.home__hero {
+  margin: 1rem 0 2rem;
+  padding: 3rem 1.5rem;
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, var(--pink-soft), #fff1e0);
+  text-align: center;
+}
+
+.home__hero h1 {
+  font-size: clamp(1.8rem, 4vw, 2.8rem);
+}
+
+.home__hero p {
+  max-width: 520px;
+  margin: 0 auto 1.25rem;
+  color: var(--muted);
+}
+
+.home__actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.home__steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.home__step {
+  text-align: center;
+}
+
+.home__step-icon {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 2rem;
+}

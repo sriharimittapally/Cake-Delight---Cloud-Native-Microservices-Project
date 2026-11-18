@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cake-delight-config
+  namespace: cake-delight
+
+data:
+  MYSQL_HOST: "mysql"
+  MYSQL_PORT: "3306"
+
+  CAKE_CATALOG_DB: "cake_catalog_db"
+  CAKE_ORDER_DB: "cake_order_db"
+  CAKE_NOTIFICATION_DB: "cake_notification_db"
+  CAKE_RATING_DB: "cake_rating_db"
+
+  RABBITMQ_HOST: "rabbitmq"
+  RABBITMQ_PORT: "5672"
+
+  CATALOG_SERVICE_URL: "http://catalog-service:8081"
+  ORDER_SERVICE_URL: "http://order-service:8082"
+  RATING_SERVICE_URL: "http://rating-service:8084"

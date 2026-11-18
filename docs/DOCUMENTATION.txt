@@ -1,0 +1,475 @@
+==============================================================================
+  CAKE DELIGHT - CLOUD NATIVE MICROSERVICES ENGINEERING
+  CAPSTONE PROJECT DOCUMENTATION
+  Author : Srihari Mittapally
+==============================================================================
+
+
+TABLE OF CONTENTS
+------------------------------------------------------------------------------
+  1.  Project Summary
+  2.  Objectives
+  3.  Technology Stack
+  4.  System Architecture
+  5.  Components and Responsibilities
+  6.  Communication Between Components
+  7.  Business Flows
+  8.  Data Design
+  9.  API Overview
+  10. Configuration
+  11. Containerisation (Docker)
+  12. Orchestration (Kubernetes)
+  13. How To Run - Docker Compose
+  14. How To Run - Kubernetes
+  15. Testing
+
+
+==============================================================================
+1. PROJECT SUMMARY
+==============================================================================
+
+Cake Delight is an online cake shop built with a microservices architecture.
+Customers browse cakes, fill a basket, check out, receive an order
+confirmation email and rate the cakes they bought. A demo Admin Dashboard
+lets the shop add cakes, delete cakes and switch cakes available/unavailable.
+
+The backend is five independent Spring Boot applications (an API Gateway and
+four services). The frontend is a React single-page application served by
+Nginx. All parts run in Docker containers, are started locally with Docker
+Compose and are deployed on Kubernetes (Docker Desktop).
+
+
+==============================================================================
+2. OBJECTIVES
+==============================================================================
+
+  - Split a business application into small, independently deployable services.
+  - Give each service its own database (database per service).
+  - Provide one entry point for clients (API Gateway).
+  - Use synchronous REST calls where an answer is needed immediately.
+  - Use asynchronous messaging (RabbitMQ) where work can happen in the
+    background (order confirmation email).
+  - Package every component as a container image.
+  - Deploy the whole system on Kubernetes with ConfigMap and Secret based
+    configuration.
+
+
+==============================================================================
+3. TECHNOLOGY STACK
+==============================================================================
+
+  Language ............ Java 21
+  Backend framework ... Spring Boot 4.1.2
+  API Gateway ......... Spring Cloud Gateway Server WebMVC (Spring Cloud 2025.1.4)
+  Persistence ......... Spring Data JPA, Hibernate
+  Validation .......... Jakarta Bean Validation
+  Messaging ........... RabbitMQ 4 (Spring AMQP)
+  Email ............... Spring Mail, Gmail SMTP
+  Database ............ MySQL 8.0
+  Build tool .......... Maven 3.9.9 (inside Docker build)
+  Frontend ............ React 19.3.1, React Router 7.18.5, Vite 8.3.8
+  Frontend server ..... Nginx (alpine)
+  Containers .......... Docker, Docker Compose
+  Orchestration ....... Kubernetes (Docker Desktop)
+
+
+==============================================================================
+4. SYSTEM ARCHITECTURE
+==============================================================================
+
+4.1 LOGICAL VIEW
+
+                         +-----------------------------+
+                         |   Browser (Customer/Admin)  |
+                         +--------------+--------------+
+                                        |
+                   loads pages          |          REST calls /api/**
+              +-------------------------+------------------------+
+              v                                                  v
+   +-----------------------+                       +---------------------------+
+   |  cake-delight-frontend|                       |        api-gateway        |
+   |  React + Nginx  :80   |                       |           :8080           |
+   +-----------------------+                       +-----+-------+-------+-----+
+                                                         |       |       |
+                                        /api/cakes/**    |       |       |  /api/ratings/**
+                                                         v       |       v
+                                         +-------------------+   |   +------------------+
+                                         |  catalog-service  |   |   |  rating-service  |
+                                         |       :8081       |   |   |      :8084       |
+                                         +---------+---------+   |   +--------+---------+
+                                                   ^             |            |
+                       GET /api/cakes/{id}         |             |            | GET /api/orders/{id}/
+                                                   |             v            | verify-purchase
+                                                   |   +-------------------+  |
+                                                   +---|   order-service   |<-+
+                                                       |       :8082       |
+                                                       +---------+---------+
+                                                                 |
+                                                 publish         |
+                                              "order.completed"  v
+                                                       +-------------------+
+                                                       |     RabbitMQ      |
+                                                       | exchange:         |
+                                                       |   cake-delight    |
+                                                       | queue:            |
+                                                       |   notification-   |
+                                                       |   queue           |
+                                                       +---------+---------+
+                                                                 |
+                                                                 v
+                                                       +-------------------+     +--------------+
+                                                       |notification-service|--->| Gmail SMTP   |
+                                                       |       :8083       |     +--------------+
+                                                       +-------------------+
+
+   Each service (catalog, order, rating, notification) has its own database
+   on the shared MySQL server.
+
+4.2 DATA VIEW
+
+                       +--------------------------------------------+
+                       |               MySQL 8.0 server             |
+                       |                                            |
+                       |  cake_catalog_db       <- catalog-service  |
+                       |  cake_order_db         <- order-service    |
+                       |  cake_rating_db        <- rating-service   |
+                       |  cake_notification_db  <- notification-svc |
+                       +--------------------------------------------+
+
+4.3 DEPLOYMENT VIEW (KUBERNETES, NAMESPACE: cake-delight)
+
+   Your computer
+   +--------------------------------------------------------------+
+   | localhost:3000 --port-forward--> Service "frontend"  (80)     |
+   | localhost:8080 --port-forward--> Service "api-gateway" (8080) |
+   +--------------------------------------------------------------+
+                         |
+   Docker Desktop Kubernetes cluster, namespace "cake-delight"
+   +--------------------------------------------------------------+
+   |  Deployments/Services (all ClusterIP):                        |
+   |    frontend, api-gateway, catalog-service, order-service,     |
+   |    rating-service, notification-service, rabbitmq, mysql      |
+   |                                                              |
+   |  ConfigMap : cake-delight-config   (hosts, ports, DB names,   |
+   |                                     service URLs)             |
+   |  Secret    : cake-delight-secrets  (DB, RabbitMQ, mail login) |
+   |  PVC       : mysql-pvc (1Gi)       (MySQL data)               |
+   +--------------------------------------------------------------+
+
+4.4 DESIGN PRINCIPLES
+
+  - Single entry point: the browser calls only the API Gateway.
+  - Database per service: no service reads another service's tables.
+  - Layered services: controller -> service -> repository -> entity,
+    with DTOs and mappers between layers.
+  - Externalised configuration: hosts and credentials are environment
+    variables, never hard-coded.
+  - Loose coupling for side effects: checkout publishes an event; email
+    sending happens afterwards in another service.
+
+
+==============================================================================
+5. COMPONENTS AND RESPONSIBILITIES
+==============================================================================
+
+5.1 API GATEWAY (port 8080)
+    - Routes /api/cakes/** to catalog, /api/orders/** and /api/baskets/** to
+      order, /api/ratings/** to rating.
+    - CORS for http://localhost:3000, :5173, :4173.
+    - Logs every incoming request.
+    - Actuator: health, info, gateway.
+
+5.2 CATALOG SERVICE (port 8081, DB cake_catalog_db)
+    - List cakes (filters: name, category, minPrice, maxPrice); public list
+      shows only available cakes.
+    - Admin list (all cakes), get by id, add, delete, toggle availability.
+    - schema.sql creates the table, data.sql inserts 5 sample cakes.
+
+5.3 ORDER SERVICE (port 8082, DB cake_order_db)
+    - Basket: create, add item, update quantity, remove item, get.
+    - Reads cake name, price and availability from the catalog service.
+    - Checkout: creates the order (PLACED), marks the basket CHECKED_OUT and
+      publishes the order.completed event.
+    - Orders: list all, get by id, list by customer email.
+    - Purchase verification endpoint used by the rating service.
+
+5.4 RATING SERVICE (port 8084, DB cake_rating_db)
+    - Submit rating (1-5) with optional review.
+    - Confirms with the order service that the customer bought the cake.
+    - One rating per cake per order.
+    - Reviews of a cake, summary of a cake, all summaries, ratings by email.
+
+5.5 NOTIFICATION SERVICE (port 8083, DB cake_notification_db)
+    - No REST API. Consumes order.completed events from notification-queue.
+    - Saves a notification (PENDING), sends an HTML confirmation email, sets
+      the status to SENT or FAILED.
+
+5.6 FRONTEND (Nginx port 80)
+    - Pages: Home, Cakes, Basket, Orders, Admin Dashboard.
+    - Calls the gateway at http://localhost:8080/api.
+    - Remembers the basket id in the browser (localStorage).
+
+5.7 INFRASTRUCTURE
+    - MySQL 8.0: four databases created by an init script.
+    - RabbitMQ 4 (management image): exchange "cake-delight" (topic, durable),
+      queue "notification-queue" (durable), routing key "order.completed".
+
+
+==============================================================================
+6. COMMUNICATION BETWEEN COMPONENTS
+==============================================================================
+
+  From               To                  Style          Purpose
+  -----------------  ------------------  -------------  ----------------------------
+  Browser            api-gateway         REST / HTTP    All business API calls
+  api-gateway        catalog/order/      REST / HTTP    Route by path
+                     rating
+  order-service      catalog-service     REST / HTTP    Read cake name, price, stock
+  rating-service     order-service       REST / HTTP    Verify the purchase
+  order-service      RabbitMQ            AMQP publish   Announce a completed order
+  RabbitMQ           notification-svc    AMQP consume   Deliver the event
+  notification-svc   Gmail SMTP          SMTP           Send confirmation email
+
+
+==============================================================================
+7. BUSINESS FLOWS
+==============================================================================
+
+7.1 ORDER PLACEMENT
+
+   Browser        Gateway       Order          Catalog        RabbitMQ     Notification
+      |              |            |               |              |              |
+      |--create basket------------>|               |              |              |
+      |<-----------basketId--------|               |              |              |
+      |--add cake (cakeId, qty)--->|               |              |              |
+      |              |             |--get cake---->|              |              |
+      |              |             |<--price,stock-|              |              |
+      |<---basket with items-------|               |              |              |
+      |--checkout (name,email,addr)>|              |              |              |
+      |              |             |--save order PLACED           |              |
+      |              |             |--publish order.completed---->|              |
+      |<---order details (201)-----|               |              |--deliver---->|
+      |              |             |               |              |   save PENDING
+      |              |             |               |              |   send email
+      |              |             |               |              |   set SENT
+
+7.2 RATING
+
+   Browser        Gateway       Rating         Order
+      |--POST rating-->|-----------> |              |
+      |                |             |--verify----->|
+      |                |             |<--true-------|
+      |                |             |--save rating |
+      |<---------------rating saved (201)           |
+
+7.3 ADMIN
+   The Admin Dashboard lists all cakes (including unavailable ones), adds a
+   cake, deletes a cake and toggles availability. An unavailable cake is not
+   shown in the shop and cannot be added to a basket.
+
+
+==============================================================================
+8. DATA DESIGN
+==============================================================================
+
+DATABASE cake_catalog_db
+  cakes(id PK, name, description, category, price, available, image_reference)
+
+DATABASE cake_order_db
+  baskets(basket_id PK, status, created_at, updated_at)
+  basket_items(id PK, basket_id FK, cake_id, cake_name, unit_price, quantity)
+      unique (basket_id, cake_id)
+  orders(id PK, basket_id FK unique, customer_name, customer_email,
+         delivery_address, total_amount, status, created_at)
+  order_items(id PK, order_id FK, cake_id, cake_name, unit_price, quantity,
+              subtotal)
+
+DATABASE cake_rating_db
+  ratings(id PK, order_id, cake_id, customer_name, customer_email, rating,
+          review, created_at)
+      unique (order_id, cake_id)
+
+DATABASE cake_notification_db
+  notifications(id PK, order_id, customer_name, customer_email, subject,
+                message, status, created_at)
+
+Basket items and order items keep a copy of the cake name and unit price at the
+time of purchase, so later catalog changes do not change past orders.
+
+
+==============================================================================
+9. API OVERVIEW  (all through the gateway, http://localhost:8080)
+==============================================================================
+
+  CATALOG
+    GET    /api/cakes                          list available cakes (filters)
+    GET    /api/cakes/admin                    list all cakes
+    GET    /api/cakes/{id}                     get one cake
+    POST   /api/cakes                          add a cake              -> 201
+    PATCH  /api/cakes/{id}/availability        toggle availability     -> 204
+    DELETE /api/cakes/{id}                     delete a cake           -> 204
+
+  BASKET
+    POST   /api/baskets                        create basket           -> 201
+    POST   /api/baskets/{basketId}/items       add cake                -> 200
+    GET    /api/baskets/{basketId}             get basket              -> 200
+    PUT    /api/baskets/{basketId}/items/{itemId}   change quantity    -> 200
+    DELETE /api/baskets/{basketId}/items/{itemId}   remove item        -> 204
+
+  ORDER
+    POST   /api/orders/checkout/{basketId}     checkout                -> 201
+    GET    /api/orders                         all orders
+    GET    /api/orders/{orderId}               one order
+    GET    /api/orders/customer?email=         orders of a customer
+    GET    /api/orders/{orderId}/verify-purchase?email=&cakeId=   true/false
+
+  RATING
+    POST   /api/ratings                        submit rating           -> 201
+    GET    /api/ratings/cake/{cakeId}          reviews of a cake
+    GET    /api/ratings/cake/{cakeId}/summary  average and count
+    GET    /api/ratings/summary                summaries of all rated cakes
+    GET    /api/ratings/customer?email=        ratings by a customer
+
+  GATEWAY
+    GET    /actuator/health
+    GET    /actuator/gateway/routes
+
+Full request and response bodies are in each service README.
+
+
+==============================================================================
+10. CONFIGURATION
+==============================================================================
+
+  MYSQL_HOST, MYSQL_PORT                 MySQL address (mysql, 3306)
+  MYSQL_USERNAME, MYSQL_PASSWORD         Database login
+  CAKE_CATALOG_DB / CAKE_ORDER_DB /
+  CAKE_RATING_DB / CAKE_NOTIFICATION_DB  Database names
+  RABBITMQ_HOST, RABBITMQ_PORT           RabbitMQ address (rabbitmq, 5672)
+  RABBITMQ_USERNAME, RABBITMQ_PASSWORD   Broker login
+  CATALOG_SERVICE_URL                    http://catalog-service:8081
+  ORDER_SERVICE_URL                      http://order-service:8082
+  RATING_SERVICE_URL                     http://rating-service:8084
+  MAIL_USERNAME, MAIL_PASSWORD           Gmail address and Gmail app password
+
+  Docker Compose : docker/.env
+  Kubernetes     : ConfigMap cake-delight-config (non-secret values)
+                   Secret cake-delight-secrets   (passwords and mail login)
+
+
+==============================================================================
+11. CONTAINERISATION (DOCKER)
+==============================================================================
+
+  Backend services (5): multi-stage Dockerfile
+     Stage 1: maven:3.9.9-eclipse-temurin-21  -> mvn clean package -DskipTests
+     Stage 2: eclipse-temurin:21-jre          -> java -jar app.jar
+
+  Frontend: multi-stage Dockerfile
+     Stage 1: node:22-alpine   -> npm install, npm run build
+     Stage 2: nginx:alpine     -> serves the built files on port 80
+
+  Images built by Docker Compose:
+     cake-delight-catalog-service     cake-delight-order-service
+     cake-delight-notification-service cake-delight-rating-service
+     cake-delight-api-gateway         cake-delight-frontend
+
+  Official images: mysql:8.0, rabbitmq:4-management
+
+  docker-compose.yml defines: 8 containers, a bridge network
+  (cake-delight-network) and a named volume (mysql_data).
+
+
+==============================================================================
+12. ORCHESTRATION (KUBERNETES)
+==============================================================================
+
+  Namespace ........ cake-delight
+  Manifests ........ namespace, config, secret, mysql, rabbitmq,
+                     catalog-service, order-service, rating-service,
+                     notification-service, api-gateway, frontend
+  Workloads ........ one Deployment (1 replica) per component
+  Services ......... all ClusterIP (no NodePort)
+  Config ........... ConfigMap injected with envFrom
+  Secrets .......... Secret keys injected as individual environment variables
+  Storage .......... PersistentVolumeClaim mysql-pvc (1Gi) mounted in MySQL
+  Database init .... ConfigMap mysql-init mounted in /docker-entrypoint-initdb.d
+  Images ........... cake-delight-*:latest, imagePullPolicy IfNotPresent
+                     (uses the images built locally with Docker Compose)
+  Access ........... kubectl port-forward of api-gateway (8080) and
+                     frontend (3000 -> 80)
+
+
+==============================================================================
+13. HOW TO RUN - DOCKER COMPOSE
+==============================================================================
+
+  cd docker
+  cp .env.example .env            (Windows: copy .env.example .env)
+  (edit .env: passwords and Gmail app password)
+  docker compose build
+  docker compose up -d
+  docker compose ps
+  docker compose logs -f api-gateway
+
+  Open : http://localhost:3000          (application)
+         http://localhost:8080/api/cakes (API)
+         http://localhost:15672          (RabbitMQ management)
+
+  Stop : docker compose down            (add -v to delete database data)
+
+
+==============================================================================
+14. HOW TO RUN - KUBERNETES
+==============================================================================
+
+  Run docker compose down first (ports 8080 and 3000 must be free).
+  From the project root:
+
+  kubectl config get-contexts
+  kubectl config use-context docker-desktop
+  kubectl get nodes
+
+  kubectl apply -f k8s/namespace.yaml
+  kubectl config set-context --current --namespace=cake-delight
+  kubectl apply -f k8s/config.yaml
+  kubectl apply -f k8s/secret.yaml
+  kubectl apply -f k8s/mysql.yaml
+  kubectl apply -f k8s/rabbitmq.yaml
+  kubectl apply -f k8s/catalog-service.yaml
+  kubectl apply -f k8s/order-service.yaml
+  kubectl apply -f k8s/rating-service.yaml
+  kubectl apply -f k8s/notification-service.yaml
+  kubectl apply -f k8s/api-gateway.yaml
+  kubectl apply -f k8s/frontend.yaml
+
+  kubectl get pods -n cake-delight
+  kubectl get svc -n cake-delight
+  kubectl get secrets -n cake-delight
+
+  Terminal 1: kubectl port-forward -n cake-delight svc/api-gateway 8080:8080
+  Terminal 2: kubectl port-forward -n cake-delight svc/frontend 3000:80
+
+  Open http://localhost:3000
+
+  Clean up: kubectl delete namespace cake-delight
+
+
+==============================================================================
+15. TESTING
+==============================================================================
+
+  Manual end-to-end test (see docs/TESTING.md):
+    1. List cakes.
+    2. Create basket and add a cake.
+    3. Check out with a real email address.
+    4. Confirm the order appears on the Orders page.
+    5. Confirm the confirmation email arrives.
+    6. Rate the cake and see the average on the Cakes page.
+    7. Admin: add a cake, toggle availability, delete the cake.
+
+
+
+==============================================================================
+  END OF DOCUMENT
+==============================================================================

@@ -1,0 +1,39 @@
+.admin-cake-table__wrapper {
+  overflow-x: auto;
+}
+
+.admin-cake-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  border-radius: var(--radius);
+}
+
+.admin-cake-table th,
+.admin-cake-table td {
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.admin-cake-table th {
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.admin-cake-table__pill {
+  padding: 0.1rem 0.6rem;
+  border-radius: 999px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.admin-cake-table__pill.is-on {
+  background: var(--success-soft);
+  color: var(--success);
+}

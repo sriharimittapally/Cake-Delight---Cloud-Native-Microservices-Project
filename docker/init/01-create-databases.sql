@@ -1,0 +1,4 @@
+CREATE DATABASE IF NOT EXISTS cake_catalog_db;
+CREATE DATABASE IF NOT EXISTS cake_order_db;
+CREATE DATABASE IF NOT EXISTS cake_notification_db;
+CREATE DATABASE IF NOT EXISTS cake_rating_db;

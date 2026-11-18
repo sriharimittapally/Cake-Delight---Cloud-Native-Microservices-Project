@@ -1,0 +1,16 @@
+.admin__layout {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.admin__layout h2 {
+  font-size: 1.3rem;
+}
+
+@media (max-width: 860px) {
+  .admin__layout {
+    grid-template-columns: 1fr;
+  }
+}

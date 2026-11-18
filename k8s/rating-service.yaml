@@ -1,0 +1,51 @@
+# 1. Rating Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rating-service
+  namespace: cake-delight
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rating-service
+  template:
+    metadata:
+      labels:
+        app: rating-service
+    spec:
+      containers:
+        - name: rating-service
+          image: cake-delight-rating-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8084
+          envFrom:
+            - configMapRef:
+                name: cake-delight-config
+          env:
+            - name: MYSQL_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: cake-delight-secrets
+                  key: MYSQL_USERNAME
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cake-delight-secrets
+                  key: MYSQL_PASSWORD
+
+---
+# 2. Rating Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: rating-service
+  namespace: cake-delight
+spec:
+  selector:
+    app: rating-service
+  ports:
+    - port: 8084
+      targetPort: 8084
+  type: ClusterIP

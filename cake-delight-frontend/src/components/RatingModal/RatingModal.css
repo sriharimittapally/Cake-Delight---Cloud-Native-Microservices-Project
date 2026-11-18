@@ -1,0 +1,8 @@
+.rating-modal__stars {
+  margin-bottom: 0.75rem;
+  text-align: center;
+}
+
+.rating-modal .btn {
+  width: 100%;
+}
