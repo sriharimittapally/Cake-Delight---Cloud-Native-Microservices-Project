@@ -919,7 +919,7 @@ This deletes every pod, service, secret and the MySQL volume claim (all database
 
 | Document | Content |
 |---|---|
-| [docs/DOCUMENTATION.txt](DOCUMENTATION.txt) | Plain-text project documentation |
+| [docs/DOCUMENTATION.txt](docs/DOCUMENTATION.txt) | Plain-text project documentation |
 | [api-gateway/README.md](api-gateway/README.md) | Gateway routing, CORS, actuator |
 | [catalog-service/README.md](catalog-service/README.md) | Catalog APIs, database, run steps |
 | [order-service/README.md](order-service/README.md) | Basket and order APIs, events, run steps |
